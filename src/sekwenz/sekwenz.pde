@@ -1,10 +1,6 @@
 /*
 	Sekwenz
 	
-	0.5.2
-		- 3 pattern storage slots
-		- fewer global variables
-	
 	0.5.1
 		- improved control pattern (no more need for simultanious presses)
 		- bugfixes
@@ -39,55 +35,59 @@
 
 #include <EEPROM.h>
 
-#define FIRST 0
-#define PROPERTY_ON 0
-#define PROPERTY_PITCH 1
-#define PROPERTY_VELOCITY 2
-#define PROPERTY_NONE 3
+#define FIRST 1
+#define PROPERTY_ON 1
+#define PROPERTY_PITCH 2
+#define PROPERTY_VELOCITY 3
+#define PROPERTY_NONE 4
 #define NUMBER_OF_PROPERTIES 3
-#define MENU_TEMPO 0
-#define MENU_PLAYMODE 1
-#define MENU_MIDI_OCTAVE 2
-#define MENU_LOAD 3
-#define MENU_SAVE 4
+#define MENU_TEMPO 1
+#define MENU_PLAYMODE 2
+#define MENU_MIDI_OCTAVE 3
+#define MENU_LOAD 4
+#define MENU_SAVE 5
 #define NUMBER_OF_MENUS 5
-#define MODE_8 0
-#define MODE_16 1
-#define MODE_MODULATE 2
-#define MODE_RANDOMIZE 3
+#define MODE_8 1
+#define MODE_16 2
+#define MODE_MODULATE 3
+#define MODE_RANDOMIZE 4
 #define NUMBER_OF_MODES 4
-#define STATE_SELECTING_MENU 0
-#define STATE_EDITING_MENU 1
-#define STATE_SELECTING_STEP 2
-#define STATE_SELECTING_PROPERTY 3
-#define STATE_EDITING_PROPERTY 4
+#define STATE_SELECTING_MENU 1
+#define STATE_EDITING_MENU 2
+#define STATE_SELECTING_STEP 3
+#define STATE_SELECTING_PROPERTY 4
+#define STATE_EDITING_PROPERTY 5
 #define MIDI_NOTE_ON 0x90
 #define MIDI_NOTE_OFF 0x80
 #define MIDI_BASE_NOTE 24
 #define NUMBER_OF_MIDI_OCTAVES 5
-#define NUMBER_OF_SLOTS 3
 
-byte selectedOctave = FIRST;
+byte midiOctave = FIRST;
 byte selectedProperty = PROPERTY_NONE;
 byte selectedMenuItem = MENU_TEMPO;
 byte selectedStep = FIRST;
-byte selectedSlot = 0;
 byte playMode = MODE_8;
 byte playPosition = FIRST;
-byte modulationPosition = FIRST;
 byte state = STATE_SELECTING_STEP;
+byte modulationPosition = FIRST;
 
 byte beat = 90;
 byte lowNoteByte = 0;
 byte highNoteByte = 0;
 
-byte pitch[16];
-byte velocity[16];
-byte modulate[8];
-
+byte pitch[17];
+byte velocity[17];
+byte modulate[9];
+byte currentNote = 0;
 byte button1 = A0;
 byte button2 = A1;
 byte encoder = A2;
+
+boolean button1Down = false;
+boolean button2Down = false;
+boolean exitPressed = false;
+boolean enterPressed = false;
+boolean blink = false;
 
 void setup() {
     for (int pin = 3; pin <= 13; pin++) pinMode(pin, OUTPUT);
@@ -108,36 +108,32 @@ void setup() {
 
     Serial.begin(31250);
 }
-void updateLedDisplay(byte playPosition, byte selectedStep) {
-	static boolean blink = false;
-	
+void updateLedDisplay(byte playPosition, byte selectedStep) { 
 	for (int i = 3; i <= 13; i++) digitalWrite(i, LOW);
   
 	if (state == STATE_EDITING_MENU || state == STATE_SELECTING_MENU) {
 		if (++selectedProperty > NUMBER_OF_PROPERTIES) selectedProperty = FIRST;
-		digitalWrite(3 + selectedProperty, HIGH);
-		digitalWrite(6 + selectedMenuItem, HIGH);
+		digitalWrite(2 + selectedProperty, HIGH);
+		digitalWrite(5 + selectedMenuItem, HIGH);
 		if (selectedMenuItem == MENU_MIDI_OCTAVE) {
-			digitalWrite(13 - NUMBER_OF_MIDI_OCTAVES + selectedOctave, HIGH);
+			digitalWrite(13 - NUMBER_OF_MIDI_OCTAVES + midiOctave, HIGH);
 		} else if (selectedMenuItem == MENU_PLAYMODE) {
 			digitalWrite(13 - NUMBER_OF_MODES + playMode, HIGH);
-		}	 else if (selectedMenuItem == MENU_SAVE || selectedMenuItem == MENU_LOAD) {
-			digitalWrite(13 - NUMBER_OF_SLOTS + selectedSlot, HIGH);
 		}		
 	} else {
-		boolean hi8 = selectedStep > 7;
+		boolean hi8 = selectedStep > 8;
 		
-		if ((playPosition > 7 && hi8) || (playPosition < 8 && !hi8)) {
-			if(playPosition > 7) playPosition -= 8;
-			digitalWrite(6 + playPosition, HIGH);
+		if ((playPosition > 8 && hi8) || (playPosition < 9 && !hi8)) {
+			if(playPosition > 8) playPosition -= 8;
+			digitalWrite(5 + playPosition, HIGH);
 		}
 
 		if (hi8) {
-			if (playMode == MODE_MODULATE) digitalWrite(6 + modulationPosition, HIGH);
+			if (playMode == MODE_MODULATE) digitalWrite(5 + modulationPosition, HIGH);
 			selectedStep -= 8;
 		}
 
-		digitalWrite(6 + selectedStep, HIGH);
+		digitalWrite(5 + selectedStep, HIGH);
 		
 		blink = !blink;
 		if (state != STATE_EDITING_PROPERTY || blink) {
@@ -152,26 +148,24 @@ void updateLedDisplay(byte playPosition, byte selectedStep) {
 	}
 }
 void updateMIDI() {
-	static byte currentNote = 0;
-	
 	sendMIDI(MIDI_NOTE_OFF, currentNote, 0);
 
-	byte baseNote = MIDI_BASE_NOTE + (selectedOctave * 12);
+	byte baseNote = MIDI_BASE_NOTE + (midiOctave * 12);
 
 	if (playMode == MODE_RANDOMIZE) {
-		playPosition = rand() % 7;
+		playPosition = rand() % 8 + 1;
 	} else {
 		if (++playPosition > getNumberOfSteps()) {
 			playPosition = FIRST;
-			if (++modulationPosition > 7) modulationPosition = FIRST;
+			if (++modulationPosition > 8) modulationPosition = FIRST;
 		}
 		if (playMode == MODE_MODULATE) baseNote += modulate[modulationPosition];
 	}
 	
-	byte pos = playPosition;
+	byte pos = playPosition - 1;
 	byte B = lowNoteByte;
 	
-	if(pos > 7) {
+	if(pos >= 8) {
 		pos -= 8;
 		B = highNoteByte;
 	} 
@@ -188,13 +182,10 @@ void sendMIDI(byte cmd, byte pitch, byte velocity) {
 	Serial.write(velocity);
 }
 void procesUserInput() {
-	static boolean button1Down = false;
-	static boolean button2Down = false;
-	
 	boolean A = digitalRead(button1);
 	boolean B = digitalRead(button2);	
-	boolean exitPressed = A && !button1Down;
-	boolean enterPressed = B && !button2Down;
+	exitPressed = A && !button1Down;
+	enterPressed = B && !button2Down;		
 	button1Down = A;
 	button2Down = B;
 	
@@ -212,17 +203,17 @@ void procesUserInput() {
 		if(state == STATE_SELECTING_STEP || state == STATE_SELECTING_MENU) selectedProperty = PROPERTY_NONE;
 	} else if (enterPressed) {		
 		if (state == STATE_SELECTING_MENU) {
-			state = STATE_EDITING_MENU;
+			if (selectedMenuItem == MENU_SAVE) {
+				save(0);
+			} else if (selectedMenuItem == MENU_LOAD) {
+				load(0);
+			} else {
+				state = STATE_EDITING_MENU;
+			}
 		} else if (state == STATE_SELECTING_STEP) {  
 			state = STATE_SELECTING_PROPERTY;
 		} else if (state == STATE_SELECTING_PROPERTY) {
 			state = STATE_EDITING_PROPERTY;
-		} else if (state == STATE_EDITING_MENU) {
-			if (selectedMenuItem == MENU_SAVE) {
-				save(selectedSlot);
-			} else if (selectedMenuItem == MENU_LOAD) {
-				load(selectedSlot);
-			}
 		}
 	}
 	
@@ -234,35 +225,33 @@ void procesUserInput() {
 		if (playMode != MODE_MODULATE) {
 			selectedStep = getEncoderPosition(getNumberOfSteps());  
 		} else {
-			selectedStep = getEncoderPosition(15);  
+			selectedStep = getEncoderPosition(16);  
 		}
 	} else if (state == STATE_EDITING_PROPERTY) {
 		if(selectedProperty == PROPERTY_ON) {
 			if (selectedStep <= getNumberOfSteps()) {
-				byte pos = selectedStep;
-				if(pos > 7) {
+				byte pos = selectedStep - 1;
+				if(pos >= 8) {
 					pos -= 8;
-					bitWrite(highNoteByte, pos, getEncoderPosition(2));
+					bitWrite(highNoteByte, selectedStep - 1, getEncoderPosition(2) - 1);
 				} else {
-					bitWrite(lowNoteByte, pos, getEncoderPosition(2));
+					bitWrite(lowNoteByte, selectedStep - 1, getEncoderPosition(2) - 1);
 				}
 			} else {
-				modulate[selectedStep - 7] = getEncoderPosition(36);
+				modulate[selectedStep - 8] = getEncoderPosition(36) - 1;
 			}
 		} else if(selectedProperty == PROPERTY_PITCH) {
-			pitch[selectedStep] = getEncoderPosition(36);
+			pitch[selectedStep] = getEncoderPosition(36) - 1;
 		} else if(selectedProperty == PROPERTY_VELOCITY) {
-			velocity[selectedStep] = getEncoderPosition(128);
+			velocity[selectedStep] = getEncoderPosition(128) - 1;
 		}
 	} else if (state == STATE_EDITING_MENU) {
 		if(selectedMenuItem == MENU_TEMPO) {
-			beat = 90 + (30 * getEncoderPosition(3));
+			beat = 90 + (30 * getEncoderPosition(3) - 1);
 		} else if(selectedMenuItem == MENU_PLAYMODE) {
 			playMode = getEncoderPosition(NUMBER_OF_MODES);
 		} else if(selectedMenuItem == MENU_MIDI_OCTAVE) {
-			selectedOctave = getEncoderPosition(NUMBER_OF_MIDI_OCTAVES);
-		} else if(selectedMenuItem == MENU_SAVE || selectedMenuItem == MENU_LOAD) {
-			selectedSlot = getEncoderPosition(NUMBER_OF_SLOTS);
+			midiOctave = getEncoderPosition(NUMBER_OF_MIDI_OCTAVES);
 		}
 	}
 }
@@ -270,8 +259,8 @@ void procesUserInput() {
 int getEncoderPosition(int segments) {
 	int encoderValue = analogRead(encoder);
 	int x = 1024 / segments;
-	for(int i = 0; i <= segments; i++) {
-		if(encoderValue <= (i + 1) * x && encoderValue >= i * x) return i;
+	for(int i = 1; i <= segments; i++) {
+		if(encoderValue <= (i * x) && encoderValue >= ((i - 1) * x)) return i;
 	}
 	return segments;
 }
@@ -280,42 +269,42 @@ int getNumberOfSteps() {
 }
 
 void save(byte slot) {
-	int base = slot * 48;
-	int address = base;
+	int base = slot * 43;
+	int address = base + 1;
 	
 	do {
-		if(address <= base + 16) {
+		if(address <= base + 17) {
 			EEPROM.write(address, pitch[address - base]);
-		} else if(address <= base + 32) {
-			EEPROM.write(address, velocity[address - base - 16]);
-		} else if(address <= base + 40) {
-			EEPROM.write(address, modulate[address - base - 32]);
+		} else if(address <= base + 34) {
+			EEPROM.write(address, velocity[address - base - 17]);
+		} else if(address <= base + 43) {
+			EEPROM.write(address, modulate[address - base - 34]);
 		} 
-	} while(++address <= base + 40);
+	} while(++address <= base + 43);
 	
-	EEPROM.write(base + 41, lowNoteByte);
-	EEPROM.write(base + 42, highNoteByte);
-	EEPROM.write(base + 43, beat);
-	EEPROM.write(base + 44, playMode);
+	EEPROM.write(base + 44, lowNoteByte);
+	EEPROM.write(base + 45, highNoteByte);
+	EEPROM.write(base + 46, beat);
+	EEPROM.write(base + 47, playMode);
 }
 void load(byte slot) {
-	int base = slot * 48;
-	int address = base;
+	int base = slot * 43;
+	int address = base + 1;
 	
 	do {
-		if(address <= base + 16) {
+		if(address <= base + 17) {
 			pitch[address - base] = EEPROM.read(address);
-		} else if(address <= base + 32) {
-			velocity[address - base - 16] = EEPROM.read(address);
-		} else if(address <= base + 40) {
-			modulate[address - base - 32] = EEPROM.read(address);
+		} else if(address <= base + 34) {
+			velocity[address - base - 17] = EEPROM.read(address);
+		} else if(address <= base + 43) {
+			modulate[address - base - 34] = EEPROM.read(address);
 		}
-	} while(++address <= base + 40);
+	} while(++address <= base + 43);
 	
-	lowNoteByte = EEPROM.read(base + 41);
-	highNoteByte = EEPROM.read(base + 42);
-	beat = EEPROM.read(base + 43);
-	playMode = EEPROM.read(base + 44);
+	lowNoteByte = EEPROM.read(base + 44);
+	highNoteByte = EEPROM.read(base + 45);
+	beat = EEPROM.read(base + 46);
+	playMode = EEPROM.read(base + 47);
 	
 	playPosition = FIRST;	
 }
