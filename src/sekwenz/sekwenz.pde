@@ -90,23 +90,23 @@ boolean enterPressed = false;
 boolean blink = false;
 
 void setup() {
-    for (int pin = 3; pin <= 13; pin++) pinMode(pin, OUTPUT);
+	for (int pin = 3; pin <= 13; pin++) pinMode(pin, OUTPUT);
 
-    pinMode(button1, INPUT);
-    pinMode(button2, INPUT);
-    pinMode(encoder, INPUT);
+	pinMode(button1, INPUT);
+	pinMode(button2, INPUT);
+	pinMode(encoder, INPUT);
 
-    for (int step = 1; step <= 16; step++) {
-        pitch[step] = 0;
-        velocity[step] = 60;
+	for (int step = 1; step <= 16; step++) {
+		pitch[step] = 0;
+		velocity[step] = 60;
 		if(step <= 9) modulate[step] = 0;
-    }
+	}
 
 	lowNoteByte = 1;
-    pitch[1] = 0;
-    velocity[1] = 55;
+	pitch[1] = 0;
+	velocity[1] = 55;
 
-    Serial.begin(31250);
+	Serial.begin(31250);
 }
 void updateLedDisplay(byte playPosition, byte selectedStep) { 
 	for (int i = 3; i <= 13; i++) digitalWrite(i, LOW);
