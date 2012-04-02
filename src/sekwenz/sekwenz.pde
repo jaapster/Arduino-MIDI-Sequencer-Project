@@ -29,7 +29,7 @@
 	0.1.0
 		- code refactoring for efficiency and readability
 		- updated for use with Arduino 1.0
-	    - based on simplenZAR v 0.8.16 (http://www.roebbeling.de/wordpress/?p=85)
+		- based on simplenZAR v 0.8.16 (http://www.roebbeling.de/wordpress/?p=85)
 		
 */
 
