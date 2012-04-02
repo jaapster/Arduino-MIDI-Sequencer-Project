@@ -85,8 +85,6 @@ byte encoder = A2;
 
 boolean button1Down = false;
 boolean button2Down = false;
-boolean exitPressed = false;
-boolean enterPressed = false;
 boolean blink = false;
 
 void setup() {
@@ -184,8 +182,8 @@ void sendMIDI(byte cmd, byte pitch, byte velocity) {
 void procesUserInput() {
 	boolean A = digitalRead(button1);
 	boolean B = digitalRead(button2);	
-	exitPressed = A && !button1Down;
-	enterPressed = B && !button2Down;		
+	boolean exitPressed = A && !button1Down;
+	boolean enterPressed = B && !button2Down;		
 	button1Down = A;
 	button2Down = B;
 	
